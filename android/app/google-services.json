@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "991435007163",
+    "project_id": "click-express-de9b3",
+    "storage_bucket": "click-express-de9b3.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:991435007163:android:605a65d8394e5e71d9b59e",
+        "android_client_info": {
+          "package_name": "click_express.project"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA7QmnEK36qat8Sam-Rpbu_mfOfAt1JtqQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

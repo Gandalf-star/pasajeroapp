@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Incluir primero todos los dominios necesarios -->
+    <include domain="sharedpref" path="."/>
+    <include domain="database" path="."/>
+    <include domain="file" path="."/>
+    
+    <!-- Luego excluir lo que no se necesita respaldar -->
+    <exclude domain="database" path="google_app_measurement.db"/>
+    <exclude domain="file" path="splash.png"/>
+    
+    <!-- Excluir archivos de caché de forma segura -->
+    <exclude domain="file" path="cache/"/>
+    
+    <!-- Excluir archivos temporales -->
+    <exclude domain="file" path="tmp/"/>
+</full-backup-content>

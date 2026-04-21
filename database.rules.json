@@ -1,0 +1,99 @@
+{
+  "rules": {
+    "conductores": {
+      ".read": "auth != null",
+      ".indexOn": ["estado", "tipoVehiculo", "categoria", "enLinea", "idViajeActivo"],
+      "$conductorId": {
+        ".read": "auth != null",
+        ".write": "auth != null && (auth.uid === $conductorId || auth.token.admin === true)"
+      }
+    },
+    "pasajeros": {
+      ".read": "auth.token.admin === true",
+      "$pasajeroId": {
+        ".read": "auth != null && (auth.uid === $pasajeroId || auth.token.admin === true)",
+        ".write": "auth != null && (auth.uid === $pasajeroId || auth.token.admin === true)"
+      }
+    },
+    "solicitudes_viaje": {
+      ".read": "auth != null",
+      ".indexOn": ["idPasajero", "estado", "idConductor", "geohash"],
+      "$solicitudId": {
+        ".read": "auth != null",
+        ".write": "auth != null && (auth.token.admin === true || newData.child('idPasajero').val() === auth.uid || data.child('idPasajero').val() === auth.uid || data.child('idConductor').val() === auth.uid || newData.child('idConductor').val() === auth.uid || newData.child('conductorRechazado').hasChild(auth.uid))"
+      }
+    },
+    "viajes_activos": {
+      ".read": "auth != null",
+      "$viajeId": {
+        ".read": "auth != null",
+        ".write": "auth != null && (auth.token.admin === true || data.child('idConductor').val() === auth.uid || data.child('idPasajero').val() === auth.uid || newData.child('idConductor').val() === auth.uid || newData.child('idPasajero').val() === auth.uid)"
+      }
+    },
+    "viajes_completados": {
+      ".read": "auth.token.admin === true",
+      "$viajeId": {
+        ".read": "auth != null && (auth.token.admin === true || data.child('idConductor').val() === auth.uid || data.child('idPasajero').val() === auth.uid)",
+        ".write": "auth != null && (auth.token.admin === true || data.child('idConductor').val() === auth.uid || newData.child('idConductor').val() === auth.uid)"
+      }
+    },
+    "usuarios": {
+      ".read": "auth.token.admin === true",
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || auth.token.admin === true)",
+        ".write": "auth != null && (auth.uid === $uid || auth.token.admin === true)"
+      }
+    },
+    "chats": {
+      ".read": "auth.token.admin === true",
+      "$viajeId": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    },
+    "historial_chats": {
+      ".read": "auth.token.admin === true",
+      "$viajeId": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    },
+    "llamadas": {
+      ".read": "auth.token.admin === true",
+      "$llamadaId": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    },
+    "test_connection": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "alertas_emergencia": {
+      ".read": "auth.token.admin === true",
+      ".indexOn": ["estado", "uid", "timestamp"],
+      "$alertaId": {
+        ".read": "auth != null && (auth.token.admin === true || data.child('uid').val() === auth.uid || data.child('usuarioId').val() === auth.uid)",
+        ".write": "auth != null && (auth.token.admin === true || !data.exists() && (newData.child('uid').val() === auth.uid || newData.child('usuarioId').val() === auth.uid) || data.child('uid').val() === auth.uid || data.child('usuarioId').val() === auth.uid)"
+      }
+    },
+    "historial_viajes": {
+      ".read": "auth.token.admin === true",
+      "$viajeId": {
+        ".read": "auth != null && (auth.token.admin === true || data.child('idConductor').val() === auth.uid || data.child('idPasajero').val() === auth.uid)",
+        ".write": "auth != null && (auth.token.admin === true || data.child('idConductor').val() === auth.uid || newData.child('idConductor').val() === auth.uid)"
+      }
+    },
+    "viajes": {
+      ".read": "auth.token.admin === true",
+      "$viajeId": {
+        ".read": "auth != null && (auth.token.admin === true || data.child('idConductor').val() === auth.uid || data.child('idPasajero').val() === auth.uid)",
+        ".write": "auth.token.admin === true"
+      }
+    },
+    "config_app": {
+      ".read": "auth != null",
+      ".write": "auth.token.admin === true"
+    }
+  }
+}

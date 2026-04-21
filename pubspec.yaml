@@ -1,0 +1,91 @@
+name: clickexpress
+description: Aplicación de pasajeros para solicitar servicios de transporte urbano - Taxis, Mototaxis y Delivery
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.6.2 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # Íconos y fuentes
+  cupertino_icons: ^1.0.8
+  google_fonts: ^6.2.1
+
+  # Mapa y geolocalización
+  google_maps_flutter: ^2.5.3
+  latlong2: ^0.9.1
+  geolocator: ^14.0.1
+  flutter_foreground_task: ^6.1.1
+  location: ^8.0.0
+  dio: ^5.4.3
+  flutter_polyline_points: ^3.0.1
+  http: ^1.3.0
+  
+  # Firebase
+  firebase_core: ^3.15.2
+  firebase_auth: ^5.7.0  # Versión específica compatible
+  cloud_firestore: ^5.4.0  # Agregado para Firestore
+  cloud_functions: ^5.0.0  # Agregado para llamadas a Cloud Functions
+  firebase_database: ^11.3.10  # Versión específica
+  firebase_storage: ^12.4.10  # Versión específica
+  firebase_messaging: ^15.2.10  # Versión específica
+  firebase_analytics: ^11.6.0  # Versión específica
+  lottie: ^3.3.1
+
+  # Notificaciones locales
+  flutter_local_notifications: ^18.0.0
+
+  # Imágenes
+  cached_network_image: ^3.4.1
+  image_picker: ^1.1.2
+  url_launcher: ^6.3.2
+  flutter_screenutil: ^5.9.3
+  flutter_secure_storage: ^9.2.2
+  audioplayers: ^6.5.1
+  shared_preferences: ^2.5.3
+  intl: ^0.20.2
+  google_maps_flutter_android: ^2.18.3
+  google_maps_flutter_platform_interface: ^2.14.1
+
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.13.1
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/imagen/taxi_2.png"
+  min_sdk_android: 21
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/audio/
+    - assets/imagen/imagen_taxi.png
+    - assets/imagen/moto_taxi.png
+    - assets/imagen/billetera.png
+    - assets/imagen/registro.png
+    - assets/imagen/perfil.png
+    - assets/imagen/taxi_2.png
+    - assets/lottie/carro.json
+    - assets/lottie/check.json
+    - assets/imagen/FlashDrive_1.png
+    - assets/imagen/FlashDrive_2.png
+    - assets/imagen/FlashDrive_3.png
+    - assets/imagen/FlashDrive_4.png
+    - assets/imagen/FlashDrive_App_60.png
+    - assets/imagen/FlashDrive_EliteIcon_77.png
+    - assets/imagen/FlashDrive_Fun_62.png
+    - assets/imagen/FlashDrive_Pro_123.png
+    - assets/imagen/FlashDrive_Pro_125.png
+    - assets/imagen/FlashDrive_Pro_126.png 
+    - assets/imagen/FlashDrive_3D_101.png
