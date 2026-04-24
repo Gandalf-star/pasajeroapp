@@ -97,7 +97,7 @@ class _PantallaSeguimientoViajeState extends State<PantallaSeguimientoViaje>
   String? _colorVehiculo;
 
   String? _ultimoIdConductor;
-  bool _esFavorito = false;
+  bool esFavorito = false;
 
   // Flag para prevenir navegación múltiple
   bool _navegacionFinalEjecutada = false;
@@ -105,7 +105,8 @@ class _PantallaSeguimientoViajeState extends State<PantallaSeguimientoViaje>
   @override
   void initState() {
     super.initState();
-    debugPrint('[CLICKEXPRESS] PantallaSeguimientoViaje: initState con idViaje=${widget.idViaje}');
+    debugPrint(
+        '[CLICKEXPRESS] PantallaSeguimientoViaje: initState con idViaje=${widget.idViaje}');
     _currentChatId = widget.idViaje;
 
     try {
@@ -139,47 +140,11 @@ class _PantallaSeguimientoViajeState extends State<PantallaSeguimientoViaje>
           await _servicioFirebase.esFavorito(widget.uidPasajero!, idConductor);
       if (mounted) {
         setState(() {
-          _esFavorito = esFav;
+          esFavorito = esFav;
         });
       }
     } catch (e) {
       debugPrint('Error verificando favorito: $e');
-    }
-  }
-
-  Future<void> _toggleFavorito() async {
-    if (widget.uidPasajero == null || _viajeActual?.idConductor == null) return;
-    if (!mounted) return;
-
-    try {
-      // Optimismo UI
-      setState(() {
-        _esFavorito = !_esFavorito;
-      });
-
-      await _servicioFirebase.toggleFavorito(
-          widget.uidPasajero!, _viajeActual!.idConductor!);
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_esFavorito
-              ? 'Agregado a conductores favoritos'
-              : 'Eliminado de favoritos'),
-          duration: const Duration(seconds: 2),
-          backgroundColor: _esFavorito ? Colors.pink : Colors.grey,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    } catch (e) {
-      // Revertir si falla
-      if (!mounted) return;
-      setState(() {
-        _esFavorito = !_esFavorito;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Error al actualizar favoritos')),
-      );
     }
   }
 
@@ -554,44 +519,83 @@ class _PantallaSeguimientoViajeState extends State<PantallaSeguimientoViaje>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
         title: Text(
-          'Seguimiento de Viaje',
+          'En Viaje',
           style: GoogleFonts.plusJakartaSans(
             fontWeight: FontWeight.bold,
-            color: Colors.white,
+            color: Colors.black87,
           ),
         ),
-        backgroundColor: Colors.green,
+        backgroundColor: Colors.transparent,
         elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.black87),
         actions: [
           // Chat icon
-          IconButton(
-            icon: Icon(
-              _mostrandoChat ? Icons.close : Icons.chat,
-              color: (_mensajesNoLeidos > 0 && _iconoRojo)
-                  ? Colors.red
-                  : Colors.white,
+          Container(
+            margin: EdgeInsets.only(right: 16.w),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.1),
+                  blurRadius: 10,
+                  offset: const Offset(0, 2),
+                )
+              ],
             ),
-            onPressed: () {
-              if (!mounted) return;
-              setState(() {
-                _mostrandoChat = !_mostrandoChat;
-                // Si abrimos el chat, limpiamos notificaciones
-                if (_mostrandoChat) {
-                  _mensajesNoLeidos = 0;
-                  _iconoRojo = false;
-                  _notificationTimer?.cancel();
-                  _notificationTimer = null;
-                }
-              });
-            },
+            child: IconButton(
+              icon: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Icon(
+                    _mostrandoChat ? Icons.close : Icons.chat_bubble_outline,
+                    color: Colors.black87,
+                  ),
+                  if (_mensajesNoLeidos > 0 && _iconoRojo)
+                    Positioned(
+                      right: -2,
+                      top: -2,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(
+                          color: Colors.red,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Text(
+                          '$_mensajesNoLeidos',
+                          style: GoogleFonts.plusJakartaSans(
+                            color: Colors.white,
+                            fontSize: 10.sp,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              onPressed: () {
+                if (!mounted) return;
+                setState(() {
+                  _mostrandoChat = !_mostrandoChat;
+                  if (_mostrandoChat) {
+                    _mensajesNoLeidos = 0;
+                    _iconoRojo = false;
+                    _notificationTimer?.cancel();
+                    _notificationTimer = null;
+                  }
+                });
+              },
+            ),
           ),
         ],
       ),
       body: _viajeActual == null
           ? () {
-              debugPrint('[CLICKEXPRESS] Renderizando esqueleto (viajeActual es null)');
+              debugPrint(
+                  '[CLICKEXPRESS] Renderizando esqueleto (viajeActual es null)');
               return _construirCargaEsqueleto();
             }()
           : Stack(
@@ -599,34 +603,52 @@ class _PantallaSeguimientoViajeState extends State<PantallaSeguimientoViaje>
                 // Mapa de fondo completo
                 Positioned.fill(
                   child: () {
-                    debugPrint('[CLICKEXPRESS] Renderizando mapa para id=${_viajeActual!.id}');
+                    debugPrint(
+                        '[CLICKEXPRESS] Renderizando mapa para id=${_viajeActual!.id}');
                     return _construirMapa();
                   }(),
                 ),
 
+                // Gradiente superior para que el AppBar sea legible
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: 120.h,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.white.withValues(alpha: 0.9),
+                          Colors.white.withValues(alpha: 0.0),
+                        ],
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                      ),
+                    ),
+                  ),
+                ),
+
                 // Contenedor Flotante (Chat o Panel de Información)
                 Positioned(
-                  bottom: 24,
-                  left: 16,
-                  right: 16,
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 300),
                     switchInCurve: Curves.easeOutCubic,
                     switchOutCurve: Curves.easeInCubic,
-                    transitionBuilder: (child, animation) => FadeTransition(
-                      opacity: animation,
-                      child: SlideTransition(
-                        position: Tween<Offset>(
-                          begin: const Offset(0, 0.2),
-                          end: Offset.zero,
-                        ).animate(animation),
-                        child: child,
-                      ),
+                    transitionBuilder: (child, animation) => SlideTransition(
+                      position: Tween<Offset>(
+                        begin: const Offset(0, 1.0),
+                        end: Offset.zero,
+                      ).animate(animation),
+                      child: child,
                     ),
                     child: _mostrandoChat
                         ? SizedBox(
                             key: const ValueKey('chat'),
-                            height: 400.h,
+                            height: 450.h,
                             child: _construirChat(),
                           )
                         : SizedBox(
@@ -798,107 +820,141 @@ class _PantallaSeguimientoViajeState extends State<PantallaSeguimientoViaje>
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(32.r)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.15),
-            blurRadius: 20,
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 24,
             spreadRadius: 2,
-            offset: const Offset(0, 8),
+            offset: const Offset(0, -4),
           ),
         ],
       ),
-      padding: EdgeInsets.all(20.w),
+      padding: EdgeInsets.fromLTRB(20.w, 12.h, 20.w, 32.h),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Estado del viaje con diseño profesional
+          // Drag handle indicator
           Container(
-            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+            width: 40.w,
+            height: 4.h,
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  _obtenerColorEstado(_viajeActual!.estado),
-                  _obtenerColorEstado(_viajeActual!.estado)
-                      .withValues(alpha: 0.8),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(20.r),
-              boxShadow: [
-                BoxShadow(
-                  color: _obtenerColorEstado(_viajeActual!.estado)
-                      .withValues(alpha: 0.3),
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  _obtenerIconoEstado(_viajeActual!.estado),
-                  color: Colors.white,
-                  size: 18.sp,
-                ),
-                SizedBox(width: 8.w),
-                Text(
-                  _viajeActual!.estado.displayName,
-                  style: GoogleFonts.plusJakartaSans(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16.sp,
-                  ),
-                ),
-              ],
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(4.r),
             ),
           ),
+          SizedBox(height: 24.h),
 
-          SizedBox(height: 12.h),
-
-          // Descripción del estado
-          Text(
-            _viajeActual!.estado.descripcion,
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: 14.sp,
-              color: Colors.grey[600],
-            ),
-            textAlign: TextAlign.center,
-          ),
-
-          SizedBox(height: 16.h),
-
-          // Información del conductor (si está disponible)
-          if (_viajeActual!.nombreConductor != null) ...[
-            _construirInfoConductor(),
-            SizedBox(height: 16.h),
-          ],
-
-          // Información del viaje
+          // Estado del viaje, texto heroístico
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _construirInfoItem(
-                Icons.location_on,
-                'Destino',
-                _viajeActual!.destino,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _viajeActual!.estado.displayName,
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 24.sp,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.black87,
+                      ),
+                    ),
+                    SizedBox(height: 4.h),
+                    Text(
+                      _viajeActual!.estado.descripcion,
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 14.sp,
+                        color: Colors.grey[600],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              _construirInfoItem(
-                Icons.attach_money,
-                'Precio',
-                ServicioTasaBCV().formatearPrecio(_viajeActual!.precio),
-              ),
-              _construirInfoItem(
-                Icons.directions_car,
-                'Vehículo',
-                _viajeActual!.tipoVehiculo,
+              Container(
+                padding: EdgeInsets.all(12.w),
+                decoration: BoxDecoration(
+                  color: _obtenerColorEstado(_viajeActual!.estado)
+                      .withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  _obtenerIconoEstado(_viajeActual!.estado),
+                  color: _obtenerColorEstado(_viajeActual!.estado),
+                  size: 28.sp,
+                ),
               ),
             ],
           ),
 
-          SizedBox(height: 16.h),
+          SizedBox(height: 24.h),
+
+          // Información del conductor
+          if (_viajeActual!.nombreConductor != null) ...[
+            _construirInfoConductor(),
+            SizedBox(height: 24.h),
+            Divider(color: Colors.grey[200], thickness: 1),
+            SizedBox(height: 16.h),
+          ],
+
+          // Información del viaje simplificada
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Row(
+                  children: [
+                    Icon(Icons.location_on, color: Colors.blue, size: 24.sp),
+                    SizedBox(width: 12.w),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Destino',
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 12.sp,
+                              color: Colors.grey[500],
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          Text(
+                            _viajeActual!.destino,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 15.sp,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(16.r),
+                ),
+                child: Text(
+                  ServicioTasaBCV().formatearPrecio(_viajeActual!.precio),
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 16.sp,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.black87,
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          SizedBox(height: 24.h),
 
           // Botones de acción
           _construirBotonesAccion(),
@@ -908,105 +964,126 @@ class _PantallaSeguimientoViajeState extends State<PantallaSeguimientoViaje>
   }
 
   Widget _construirInfoConductor() {
-    return Container(
-      padding: EdgeInsets.all(12.w),
-      decoration: BoxDecoration(
-        color: Colors.grey[100],
-        borderRadius: BorderRadius.circular(12.r),
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 20.r,
-            backgroundColor: Colors.green,
+    return Row(
+      children: [
+        // Avatar del conductor
+        Container(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.grey[200]!, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: CircleAvatar(
+            radius: 28.r,
+            backgroundColor: Colors.white,
             backgroundImage:
                 _fotoConductor != null ? NetworkImage(_fotoConductor!) : null,
             child: _fotoConductor == null
                 ? Text(
                     _viajeActual!.nombreConductor![0].toUpperCase(),
                     style: GoogleFonts.plusJakartaSans(
-                      color: Colors.white,
+                      color: Colors.black87,
                       fontWeight: FontWeight.bold,
-                      fontSize: 16.sp,
+                      fontSize: 20.sp,
                     ),
                   )
                 : null,
           ),
-          SizedBox(width: 12.w),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _viajeActual!.nombreConductor!,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16.sp,
-                  ),
-                ),
-                Text(
-                  '${_modeloVehiculo ?? _viajeActual!.tipoVehiculo} • ${_colorVehiculo ?? ""} • ${_viajeActual!.placaVehiculo ?? "Sin Placa"}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.plusJakartaSans(
-                    color: Colors.grey[600],
-                    fontSize: 12.sp,
-                  ),
-                ),
-                Row(
-                  children: [
-                    Icon(Icons.star, color: Colors.amber, size: 16.sp),
-                    SizedBox(width: 4.w),
-                    Text(
-                      _calificacionConductor.toStringAsFixed(1),
+        ),
+        SizedBox(width: 16.w),
+
+        // Info del conductor y vehículo
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _viajeActual!.nombreConductor!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.plusJakartaSans(
                         fontWeight: FontWeight.bold,
-                        fontSize: 14.sp,
+                        fontSize: 18.sp,
+                        color: Colors.black87,
                       ),
                     ),
-                  ],
+                  ),
+                  Container(
+                    padding:
+                        EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[100],
+                      borderRadius: BorderRadius.circular(12.r),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.star, color: Colors.amber, size: 14.sp),
+                        SizedBox(width: 4.w),
+                        Text(
+                          _calificacionConductor.toStringAsFixed(1),
+                          style: GoogleFonts.plusJakartaSans(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12.sp,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        if (esFavorito) ...[
+                          SizedBox(width: 6.w),
+                          Icon(
+                            Icons.favorite,
+                            color: Colors.red,
+                            size: 14.sp,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: 4.h),
+              Text(
+                '${_modeloVehiculo ?? _viajeActual!.tipoVehiculo} • ${_colorVehiculo ?? ""} • ${_viajeActual!.placaVehiculo ?? "Sin Placa"}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.plusJakartaSans(
+                  color: Colors.grey[600],
+                  fontSize: 13.sp,
+                  fontWeight: FontWeight.w500,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-          if (_viajeActual!.telefonoConductor != null)
-            IconButton(
-              icon: const Icon(Icons.phone),
-              onPressed: () => _llamarConductor(),
-              color: Colors.green,
-            ),
-          // Botón Favorito
-          IconButton(
-            icon: Icon(
-              _esFavorito ? Icons.favorite : Icons.favorite_border,
-              color: _esFavorito ? Colors.pink : Colors.grey,
-            ),
-            onPressed: _toggleFavorito,
-          ),
-        ],
-      ),
-    );
-  }
+        ),
+        SizedBox(width: 12.w),
 
-  Widget _construirInfoItem(IconData icono, String titulo, String valor) {
-    return Column(
-      children: [
-        Icon(icono, color: Colors.green, size: 24.sp),
-        SizedBox(height: 4.h),
-        Text(
-          titulo,
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 12.sp,
-            color: Colors.grey[600],
+        // Acción de llamada rápida
+        if (_viajeActual!.telefonoConductor != null)
+          InkWell(
+            onTap: _llamarConductor,
+            borderRadius: BorderRadius.circular(24.r),
+            child: Container(
+              padding: EdgeInsets.all(12.w),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.phone,
+                color: Colors.black87,
+                size: 20.sp,
+              ),
+            ),
           ),
-        ),
-        Text(
-          valor,
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 14.sp,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
       ],
     );
   }
@@ -1020,22 +1097,26 @@ class _PantallaSeguimientoViajeState extends State<PantallaSeguimientoViaje>
         _viajeActual!.estado == EstadoViaje.enCamino) {
       botones.add(
         Expanded(
-          child: ElevatedButton(
-            onPressed: () => _mostrarDialogoCancelar(),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-              elevation: 0,
-              padding: EdgeInsets.symmetric(vertical: 14.h),
-              minimumSize: Size(double.infinity, 50.h),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12.r),
+          child: InkWell(
+            onTap: () => _mostrarDialogoCancelar(),
+            borderRadius: BorderRadius.circular(16.r),
+            child: Container(
+              padding: EdgeInsets.symmetric(vertical: 16.h),
+              decoration: BoxDecoration(
+                color: Colors.red.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(16.r),
+                border: Border.all(color: Colors.red.withValues(alpha: 0.2)),
               ),
-            ),
-            child: Text(
-              'Cancelar',
-              style: GoogleFonts.plusJakartaSans(
-                  fontWeight: FontWeight.bold, fontSize: 16.sp),
+              child: Center(
+                child: Text(
+                  'Cancelar Viaje',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16.sp,
+                    color: Colors.red[700],
+                  ),
+                ),
+              ),
             ),
           ),
         ),
@@ -1046,22 +1127,25 @@ class _PantallaSeguimientoViajeState extends State<PantallaSeguimientoViaje>
     if (_viajeActual!.estado == EstadoViaje.completado) {
       botones.add(
         Expanded(
-          child: ElevatedButton(
-            onPressed: () => _mostrarDialogoCalificacion(),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              foregroundColor: Colors.white,
-              elevation: 0,
-              padding: EdgeInsets.symmetric(vertical: 14.h),
-              minimumSize: Size(double.infinity, 50.h),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12.r),
+          child: InkWell(
+            onTap: () => _mostrarDialogoCalificacion(),
+            borderRadius: BorderRadius.circular(16.r),
+            child: Container(
+              padding: EdgeInsets.symmetric(vertical: 16.h),
+              decoration: BoxDecoration(
+                color: Colors.black87,
+                borderRadius: BorderRadius.circular(16.r),
               ),
-            ),
-            child: Text(
-              'Calificar',
-              style: GoogleFonts.plusJakartaSans(
-                  fontWeight: FontWeight.bold, fontSize: 16.sp),
+              child: Center(
+                child: Text(
+                  'Calificar',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16.sp,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
             ),
           ),
         ),
@@ -1075,7 +1159,7 @@ class _PantallaSeguimientoViajeState extends State<PantallaSeguimientoViaje>
     return Row(
       children: botones
           .expand((widget) =>
-              [widget, if (widget != botones.last) const SizedBox(width: 12)])
+              [widget, if (widget != botones.last) SizedBox(width: 12.w)])
           .toList(),
     );
   }
@@ -1084,168 +1168,206 @@ class _PantallaSeguimientoViajeState extends State<PantallaSeguimientoViaje>
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(32.r)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.15),
-            blurRadius: 20,
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 24,
             spreadRadius: 2,
-            offset: const Offset(0, 8),
+            offset: const Offset(0, -4),
           ),
         ],
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: Column(
-          children: [
-            // Header del chat elegante
-            Container(
-              padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 16.h),
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Color(0xFF00B4DB), Color(0xFF0083B0)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+      child: Column(
+        children: [
+          // Drag handle
+          Padding(
+            padding: EdgeInsets.only(top: 12.h, bottom: 4.h),
+            child: Center(
+              child: Container(
+                width: 40.w,
+                height: 4.h,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(4.r),
                 ),
               ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
+            ),
+          ),
+          // Header del chat elegante
+          Container(
+            padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 8.h),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border(bottom: BorderSide(color: Colors.grey[200]!)),
+            ),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 20.r,
+                  backgroundColor: Colors.grey[100],
+                  child: Icon(Icons.person, color: Colors.black54),
+                ),
+                SizedBox(width: 12.w),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _viajeActual!.nombreConductor ?? "Tu Conductor",
+                        style: GoogleFonts.plusJakartaSans(
+                          color: Colors.black87,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 18.sp,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        'Conductor',
+                        style: GoogleFonts.plusJakartaSans(
+                          color: Colors.grey[500],
+                          fontSize: 12.sp,
+                        ),
+                        maxLines: 1,
+                      ),
+                    ],
+                  ),
+                ),
+                InkWell(
+                  onTap: () {
+                    if (!mounted) return;
+                    setState(() {
+                      _mostrandoChat = false;
+                    });
+                  },
+                  borderRadius: BorderRadius.circular(24.r),
+                  child: Container(
+                    padding: EdgeInsets.all(8.w),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
+                      color: Colors.grey[100],
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.chat_bubble_outline_rounded,
-                        color: Colors.white, size: 20),
+                    child: const Icon(Icons.close_rounded,
+                        color: Colors.black87, size: 20),
                   ),
-                  SizedBox(width: 12.w),
-                  Expanded(
-                    child: Text(
-                      _viajeActual!.nombreConductor ?? "Tu Conductor",
-                      style: GoogleFonts.plusJakartaSans(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 16.sp,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  InkWell(
-                    onTap: () {
-                      if (!mounted) return;
-                      setState(() {
-                        _mostrandoChat = false;
-                      });
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.2),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.close_rounded,
-                          color: Colors.white, size: 20),
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
+          ),
 
-            // Mensajes del chat
-            Expanded(
-              child: Container(
-                color: Colors.white, //Fondo blanco para el área de mensajes
-                child: StreamBuilder<List<Map<String, dynamic>>>(
-                  stream: _chatStream,
-                  builder: (context, snapshot) {
-                    if (snapshot.hasError) {
+          // Mensajes del chat
+          Expanded(
+            child: Container(
+              color: Colors
+                  .grey[50], //Fondo gris muy claro para diferenciar el área
+              child: StreamBuilder<List<Map<String, dynamic>>>(
+                stream: _chatStream,
+                builder: (context, snapshot) {
+                  if (snapshot.hasError) {
+                    debugPrint(
+                        '[CHAT UI] Error en StreamBuilder: ${snapshot.error}');
+                    return Center(
+                        child: Text('Error en el chat: ${snapshot.error}'));
+                  }
+
+                  if (!snapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+
+                  final mensajes = snapshot.data!;
+
+                  return ListView.builder(
+                    controller: _chatScrollController,
+                    padding: EdgeInsets.all(16.w),
+                    itemCount: mensajes.length,
+                    itemBuilder: (context, index) {
+                      final mensaje = mensajes[index];
                       debugPrint(
-                          '[CHAT UI] Error en StreamBuilder: ${snapshot.error}');
-                      return Center(
-                          child: Text('Error en el chat: ${snapshot.error}'));
-                    }
+                          'Displaying message $index: ${mensaje['mensaje']} from ${mensaje['remitente']}');
+                      final esPasajero = mensaje['remitente'] == 'pasajero';
 
-                    if (!snapshot.hasData) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-
-                    final mensajes = snapshot.data!;
-
-                    return ListView.builder(
-                      controller: _chatScrollController,
-                      padding: EdgeInsets.all(16.w),
-                      itemCount: mensajes.length,
-                      itemBuilder: (context, index) {
-                        final mensaje = mensajes[index];
-                        debugPrint(
-                            'Displaying message $index: ${mensaje['mensaje']} from ${mensaje['remitente']}');
-                        final esPasajero = mensaje['remitente'] == 'pasajero';
-
-                        return Align(
-                          alignment: esPasajero
-                              ? Alignment.centerRight
-                              : Alignment.centerLeft,
-                          child: Container(
-                            margin: const EdgeInsets.symmetric(vertical: 4),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 8),
-                            decoration: BoxDecoration(
-                              //Invertir colores - pasajero gris, conductor verde
-                              color:
-                                  esPasajero ? Colors.grey[300] : Colors.green,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              mensaje['mensaje'],
-                              style: GoogleFonts.plusJakartaSans(
-                                //Invertir colores de texto - pasajero negro, conductor blanco
-                                color: esPasajero ? Colors.black : Colors.white,
-                              ),
+                      return Align(
+                        alignment: esPasajero
+                            ? Alignment.centerRight
+                            : Alignment.centerLeft,
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 12),
+                          decoration: BoxDecoration(
+                            // Colores modernos de chat
+                            color: esPasajero ? Colors.black87 : Colors.white,
+                            border: esPasajero
+                                ? null
+                                : Border.all(color: Colors.grey[300]!),
+                            borderRadius: BorderRadius.only(
+                              topLeft: const Radius.circular(20),
+                              topRight: const Radius.circular(20),
+                              bottomLeft: Radius.circular(esPasajero ? 20 : 0),
+                              bottomRight: Radius.circular(esPasajero ? 0 : 20),
                             ),
                           ),
-                        );
-                      },
-                    );
-                  },
-                ),
+                          child: Text(
+                            mensaje['mensaje'],
+                            style: GoogleFonts.plusJakartaSans(
+                              color: esPasajero ? Colors.white : Colors.black87,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                },
               ),
             ),
+          ),
 
-            // Input para escribir mensajes
-            Container(
-              padding: const EdgeInsets.all(16),
-              color: Colors.white, // Asegurar fondo blanco en el input también
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _mensajeController,
-                      decoration: InputDecoration(
-                        hintText: 'Escribe un mensaje...',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 8),
-                        filled: true,
-                        fillColor:
-                            Colors.grey[100], // Fondo claro para el campo
+          // Input para escribir mensajes
+          Container(
+            padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 32.h),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border(top: BorderSide(color: Colors.grey[200]!)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _mensajeController,
+                    decoration: InputDecoration(
+                      hintText: 'Escribe un mensaje...',
+                      hintStyle:
+                          GoogleFonts.plusJakartaSans(color: Colors.grey[400]),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24.r),
+                        borderSide: BorderSide.none,
                       ),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 14),
+                      filled: true,
+                      fillColor: Colors.grey[100],
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    icon: const Icon(Icons.send),
-                    onPressed: _enviarMensaje,
-                    color: Colors.green,
+                ),
+                SizedBox(width: 8.w),
+                InkWell(
+                  onTap: _enviarMensaje,
+                  borderRadius: BorderRadius.circular(24.r),
+                  child: Container(
+                    padding: EdgeInsets.all(14.w),
+                    decoration: BoxDecoration(
+                      color: Colors.black87,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.send, color: Colors.white, size: 20.sp),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

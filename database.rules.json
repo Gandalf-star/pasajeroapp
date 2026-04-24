@@ -1,5 +1,7 @@
 {
   "rules": {
+    ".read": "auth != null && auth.token.admin === true",
+    ".write": "auth != null && auth.token.admin === true",
     "conductores": {
       ".read": "auth != null",
       ".indexOn": ["estado", "tipoVehiculo", "categoria", "enLinea", "idViajeActivo"],

@@ -23,7 +23,11 @@ class ServicioConductores {
           _baseDeDatos.child(ConstantesInteroperabilidad.nodoConductores);
 
       if (lat != null && lng != null) {
-        final geohashCentro = GeoHashUtils.encode(lat, lng, precision: 5);
+        final geohashCentro = GeoHashUtils.encode(
+          lat,
+          lng,
+          precision: ConstantesInteroperabilidad.geohashPrecision,
+        );
         ClickLogger.d('Query Geohash: $geohashCentro');
 
         query = query
@@ -58,26 +62,36 @@ class ServicioConductores {
             final idViajeActivo =
                 conductorData[ConstantesInteroperabilidad.campoIdViajeActivo];
 
-            if (!estaEnLinea || idViajeActivo != null) return;
+            if (!estaEnLinea || idViajeActivo != null) {
+              return;
+            }
 
             if (!ConstantesInteroperabilidad.coincideCriterios(
-                conductorData, tipoVehiculo, categoria)) return;
+                conductorData, tipoVehiculo, categoria)) {
+              return;
+            }
 
             final ubicacion =
                 conductorData[ConstantesInteroperabilidad.campoUbicacionActual];
-            if (ubicacion is! Map) return;
+            if (ubicacion is! Map) {
+              return;
+            }
 
             final u = Map<String, dynamic>.from(ubicacion);
             final lat = u[ConstantesInteroperabilidad.campoLat] ?? u['lat'];
             final lng = u[ConstantesInteroperabilidad.campoLng] ?? u['lng'];
 
-            if (lat == null || lng == null) return;
+            if (lat == null || lng == null) {
+              return;
+            }
 
             final timestamp = u['timestamp'];
             if (timestamp != null) {
               final ahora = DateTime.now().millisecondsSinceEpoch;
               final diferencia = ahora - timestamp;
-              if (diferencia > 300000) return;
+              if (diferencia > 300000) {
+                return;
+              }
             }
 
             conductores.add(Conductor.fromMap(key.toString(), value));
@@ -126,7 +140,8 @@ class ServicioConductores {
           final conductorData = Map<String, dynamic>.from(value);
 
           // Usamos la lógica unificada de ConstantesInteroperabilidad
-          final esValido = ConstantesInteroperabilidad.esConductorDisponible(conductorData);
+          final esValido =
+              ConstantesInteroperabilidad.esConductorDisponible(conductorData);
           final coincide = ConstantesInteroperabilidad.coincideCriterios(
               conductorData, tipoVehiculoNormalizado, categoriaNormalizada);
 
@@ -134,9 +149,16 @@ class ServicioConductores {
             conductores.add(Conductor.fromMap(key.toString(), value));
           } else if (esValido) {
             // Log para debug si el conductor es válido pero no coincide con los criterios
-            final tipoC = (conductorData[ConstantesInteroperabilidad.campoTipoVehiculo] ?? '').toString();
-            final catC = (conductorData[ConstantesInteroperabilidad.campoCategoria] ?? '').toString();
-            ClickLogger.d('Conductor $key no coincide: ($tipoC, $catC) vs ($tipoVehiculoNormalizado, $categoriaNormalizada)');
+            final tipoC =
+                (conductorData[ConstantesInteroperabilidad.campoTipoVehiculo] ??
+                        '')
+                    .toString();
+            final catC =
+                (conductorData[ConstantesInteroperabilidad.campoCategoria] ??
+                        '')
+                    .toString();
+            ClickLogger.d(
+                'Conductor $key no coincide: ($tipoC, $catC) vs ($tipoVehiculoNormalizado, $categoriaNormalizada)');
           }
         } catch (e) {
           ClickLogger.d('Error procesando conductor $key: $e');

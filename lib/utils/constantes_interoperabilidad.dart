@@ -10,6 +10,9 @@ class ConstantesInteroperabilidad {
   static const String nodoViajesCompletados = 'viajes_completados';
   static const String nodoHistorialViajes = 'historial_viajes';
 
+  // ========== GEOHASH (Búsqueda Geoespacial) ==========
+  static const int geohashPrecision = 6;
+
   // ========== ESTADOS DEL VIAJE (Flujo Lógico) ==========
   // 1. Pasajero crea la solicitud
   static const String estadoSolicitado = 'solicitado';
@@ -214,13 +217,15 @@ class ConstantesInteroperabilidad {
   /// Normaliza la categoría
   static String normalizarCategoria(String cat) {
     if (cat.isEmpty) return '';
-    final c = cat.toLowerCase().trim()
+    final c = cat
+        .toLowerCase()
+        .trim()
         .replaceAll('á', 'a')
         .replaceAll('é', 'e')
         .replaceAll('í', 'i')
         .replaceAll('ó', 'o')
         .replaceAll('ú', 'u');
-        
+
     if (c.contains('economico')) {
       return categoriaEconomico;
     }
@@ -236,6 +241,6 @@ class ConstantesInteroperabilidad {
         c.contains('vip')) {
       return categoriaViajesL;
     }
-    return categoriaConfort; 
+    return categoriaConfort;
   }
 }

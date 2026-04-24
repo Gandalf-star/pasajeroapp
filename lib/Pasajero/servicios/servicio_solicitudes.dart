@@ -281,8 +281,10 @@ class ServicioSolicitudes {
         ConstantesInteroperabilidad.campoPrecio: precio,
         'idSolicitud': idSolicitud,
         'geohash': GeoHashUtils.encode(
-            posicionActual.latitude, posicionActual.longitude,
-            precision: 5),
+          posicionActual.latitude,
+          posicionActual.longitude,
+          precision: ConstantesInteroperabilidad.geohashPrecision,
+        ),
         ConstantesInteroperabilidad.campoOrigen: {
           ConstantesInteroperabilidad.campoLat: posicionActual.latitude,
           ConstantesInteroperabilidad.campoLng: posicionActual.longitude,
@@ -379,8 +381,10 @@ class ServicioSolicitudes {
                 .child(idSolicitud)
                 .update({
               'geohash': GeoHashUtils.encode(
-                  posicionActual.latitude, posicionActual.longitude,
-                  precision: 4),
+                posicionActual.latitude,
+                posicionActual.longitude,
+                precision: ConstantesInteroperabilidad.geohashPrecision,
+              ),
               'busquedaExpansiva': true,
               'fechaActualizacion': ServerValue.timestamp,
             });

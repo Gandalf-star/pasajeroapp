@@ -105,7 +105,7 @@ class ServicioSeguimientoViaje {
 
   /// Escucha el viaje activo (viajes_activos/{id}) cuando existe
   void _escucharViajeActivo(String idViajeActivo,
-      {int reintentosViajeActivo = 0, int maxReintentos = 5}) {
+      {int reintentos = 0, int maxReintentos = 5}) {
     _viajeActivoSubscription?.cancel();
 
     _viajeActivoSubscription = _dbRef
@@ -114,7 +114,7 @@ class ServicioSeguimientoViaje {
         .onValue
         .listen((event) {
       // RESET de reintentos si recibimos datos exitosos
-      reintentosViajeActivo = 0;
+      // reintentos = 0; // Not strictly needed in recursive approach but safe
 
       if (event.snapshot.exists && event.snapshot.value is Map) {
         final data = Map<String, dynamic>.from(event.snapshot.value as Map);
@@ -128,18 +128,18 @@ class ServicioSeguimientoViaje {
         _viajeController.add(_viajeActual);
       }
     }, onError: (error) async {
-      if (reintentosViajeActivo < maxReintentos) {
-        reintentosViajeActivo++;
+      if (reintentos < maxReintentos) {
+        final nuevosReintentos = reintentos + 1;
 
-        int segundosEspera = (math.pow(2, reintentosViajeActivo)).toInt();
+        int segundosEspera = (math.pow(2, nuevosReintentos)).toInt();
 
         ClickLogger.d(
-            '📡 Error en Stream Viaje Activo. Reintentando en $segundosEspera s (Intento $reintentosViajeActivo)');
+            'Error en Stream Viaje Activo. Reintentando en $segundosEspera s (Intento $nuevosReintentos)');
 
         await Future.delayed(Duration(seconds: segundosEspera));
 
-        // Re-llamada para intentar abrir el Stream de nuevo
-        _escucharViajeActivo(idViajeActivo);
+        // Re-llamada pasando el contador incrementado
+        _escucharViajeActivo(idViajeActivo, reintentos: nuevosReintentos);
       } else {
         ClickLogger.d(
             'Se alcanzó el máximo de reintentos para el Stream del viaje.');
