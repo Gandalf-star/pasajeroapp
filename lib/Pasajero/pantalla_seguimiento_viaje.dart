@@ -79,14 +79,15 @@ class _PantallaSeguimientoViajeState extends State<PantallaSeguimientoViaje>
   List<LatLng> _puntosRuta = [];
   int _ultimoUpdateRuta = 0;
   StreamSubscription<DatabaseEvent>? _bocinaSubscription;
-  StreamSubscription<dynamic>? _viajeSubscription;
+  StreamSubscription<DatabaseEvent>? _viajeSubscription;
+  StreamSubscription<ViajeModelo?>? _viajeStreamSubscription;
   late String _currentChatId;
+  StreamSubscription<List<Map<String, dynamic>>>? _chatNotificationSubscription;
 
-  // Notificaciones Chat - Matching Click_v2 style
   int _mensajesNoLeidos = 0;
   Timer? _notificationTimer;
   bool _iconoRojo = false;
-  final AudioPlayer _audioPlayer = AudioPlayer(); // Instancia persistente
+  final AudioPlayer _audioPlayer = AudioPlayer();
 
   Stream<List<Map<String, dynamic>>>? _chatStream; // Stream persistente
 
@@ -97,10 +98,20 @@ class _PantallaSeguimientoViajeState extends State<PantallaSeguimientoViaje>
   String? _colorVehiculo;
 
   String? _ultimoIdConductor;
+  EstadoViaje? _ultimoEstado;
   bool esFavorito = false;
 
   // Flag para prevenir navegación múltiple
   bool _navegacionFinalEjecutada = false;
+
+  String get _nombreConductorSeguro =>
+      _viajeActual?.nombreConductor?.isNotEmpty == true
+          ? _viajeActual!.nombreConductor!
+          : 'Tu Conductor';
+
+  String get _inicialConductor => _nombreConductorSeguro.isNotEmpty
+      ? _nombreConductorSeguro[0].toUpperCase()
+      : 'C';
 
   @override
   void initState() {
@@ -117,18 +128,80 @@ class _PantallaSeguimientoViajeState extends State<PantallaSeguimientoViaje>
       debugPrint('[CLICKEXPRESS] ERROR en initState inicio: $e');
     }
 
-    // Listen for trip ID changes (Request ID -> Active Trip ID) with proper cleanup
-    _viajeSubscription = _servicioSeguimiento.viajeStream.listen((viaje) {
+    // Listen for trip ID changes, state updates, and conductor assignment
+    _viajeStreamSubscription = _servicioSeguimiento.viajeStream.listen((viaje) {
+      if (!mounted) return;
+
+      // Sync local state from singleton immediately
+      setState(() {
+        _viajeActual = viaje;
+      });
+
+      // Handle ID switching (solicitud -> viaje activo)
       if (viaje != null && viaje.id.isNotEmpty && viaje.id != _currentChatId) {
         debugPrint(
             '[SYNC] Switching IDs (Chat & Bocina): $_currentChatId -> ${viaje.id}');
-        if (mounted) {
-          setState(() {
-            _currentChatId = viaje.id;
-            _chatStream = _servicioSeguimiento.escucharChat(_currentChatId);
-            _escucharBocina(_currentChatId);
-          });
+        setState(() {
+          _currentChatId = viaje.id;
+          _chatStream = _servicioSeguimiento.escucharChat(_currentChatId);
+          _escucharBocina(_currentChatId);
+        });
+      }
+
+      // Get conductor info on assignment
+      if (viaje?.idConductor != null &&
+          viaje!.idConductor != _ultimoIdConductor) {
+        _ultimoIdConductor = viaje.idConductor!;
+        _obtenerInfoConductor(viaje.idConductor!);
+        _checkFavorito(viaje.idConductor!);
+      }
+
+      // Handle enCurso transition
+      if (viaje != null &&
+          viaje.estado == EstadoViaje.enCurso &&
+          _ultimoEstado != EstadoViaje.enCurso) {
+        _ultimoEstado = viaje.estado;
+        debugPrint(
+            '[CLICKEXPRESS] Estado cambió a enCurso - Redibujando polilínea al destino');
+        _ultimoUpdateRuta = 0;
+        Future.microtask(() async {
+          await _obtenerRuta();
+          _actualizarVistaMapa();
+        });
+      } else if (viaje != null) {
+        _ultimoEstado = viaje.estado;
+      }
+
+      // Handle final states
+      final estadosFinales = [
+        EstadoViaje.completado,
+        EstadoViaje.cancelado,
+        EstadoViaje.canceladoPorConductor,
+        EstadoViaje.canceladoPorPasajero,
+      ];
+      if (viaje != null &&
+          estadosFinales.contains(viaje.estado) &&
+          !_navegacionFinalEjecutada) {
+        _navegacionFinalEjecutada = true;
+        debugPrint(
+            '[CLICKEXPRESS] Viaje finalizado con estado: ${viaje.estado}');
+
+        if (viaje.estado == EstadoViaje.completado) {
+          _mostrarDialogoViajeCompletado();
+        } else {
+          _mostrarDialogoViajeCancelado();
         }
+
+        Future.delayed(const Duration(seconds: 3), () {
+          if (mounted && _navegacionFinalEjecutada) {
+            _procesarSalidaSegura(
+              exito: viaje.estado == EstadoViaje.completado,
+              mensaje: viaje.estado == EstadoViaje.completado
+                  ? 'Viaje completado'
+                  : 'Viaje cancelado',
+            );
+          }
+        });
       }
     });
   }
@@ -236,15 +309,11 @@ class _PantallaSeguimientoViajeState extends State<PantallaSeguimientoViaje>
   Future<void> _reproducirNotificacionChat() async {
     if (!mounted) return;
     try {
-      // Detener cualquier reproducción anterior
       if (_audioPlayer.state == PlayerState.playing) {
         await _audioPlayer.stop();
       }
-      // Asegurar volumen máximo
       await _audioPlayer.setVolume(1.0);
-      // Reproducir notificación
       await _audioPlayer.play(AssetSource('audio/notificacion_chat_apple.mp3'));
-      debugPrint('[CLICKEXPRESS] Reproduciendo notificación de chat');
     } catch (e) {
       debugPrint('Error no fatal en sonido chat: $e');
     }
@@ -259,7 +328,10 @@ class _PantallaSeguimientoViajeState extends State<PantallaSeguimientoViaje>
         await _servicioSeguimiento.iniciarSeguimientoViaje(widget.idViaje);
         _chatStream = _servicioSeguimiento.escucharChat(_currentChatId);
 
-        _servicioSeguimiento.escucharChat(_currentChatId).listen((mensajes) {
+        _chatNotificationSubscription?.cancel();
+        _chatNotificationSubscription = _servicioSeguimiento
+            .escucharChat(_currentChatId)
+            .listen((mensajes) {
           if (mounted && mensajes.isNotEmpty) {
             final ultimo = mensajes.last;
             final esMio = ultimo['remitente'] == 'pasajero';
@@ -269,7 +341,9 @@ class _PantallaSeguimientoViajeState extends State<PantallaSeguimientoViaje>
                 _reproducirNotificacionChat();
                 setState(() {
                   _mensajesNoLeidos = 1;
+                  _iconoRojo = true;
                 });
+                _notificationTimer?.cancel();
                 _notificationTimer = Timer.periodic(
                   const Duration(milliseconds: 500),
                   (timer) {
@@ -287,70 +361,6 @@ class _PantallaSeguimientoViajeState extends State<PantallaSeguimientoViaje>
       } catch (e) {
         debugPrint('[CLICKEXPRESS] Error al iniciar seguimiento: $e');
       }
-    });
-
-    EstadoViaje? estadoAnterior;
-    _servicioSeguimiento.viajeStream.listen((viaje) {
-      if (!mounted) return;
-      final estadoPrevio = estadoAnterior;
-      setState(() {
-        _viajeActual = viaje;
-        estadoAnterior = viaje?.estado;
-
-        if (viaje?.idConductor != null &&
-            viaje!.idConductor != _ultimoIdConductor) {
-          _ultimoIdConductor = viaje.idConductor;
-          _obtenerInfoConductor(viaje.idConductor!);
-          _checkFavorito(viaje.idConductor!);
-        }
-      });
-
-      if (viaje != null &&
-          viaje.estado == EstadoViaje.enCurso &&
-          estadoPrevio != EstadoViaje.enCurso) {
-        debugPrint(
-            '[CLICKEXPRESS] Estado cambió a enCurso - Redibujando polilínea al destino');
-        _ultimoUpdateRuta = 0;
-        Future.microtask(() async {
-          await _obtenerRuta();
-          _actualizarVistaMapa();
-        });
-      }
-
-      if (viaje != null) {
-        final estadosFinales = [
-          EstadoViaje.completado,
-          EstadoViaje.cancelado,
-          EstadoViaje.canceladoPorConductor,
-          EstadoViaje.canceladoPorPasajero,
-        ];
-
-        if (estadosFinales.contains(viaje.estado) &&
-            !_navegacionFinalEjecutada) {
-          _navegacionFinalEjecutada = true;
-          debugPrint(
-              '[CLICKEXPRESS] Viaje finalizado con estado: ${viaje.estado}');
-
-          if (viaje.estado == EstadoViaje.completado) {
-            _mostrarDialogoViajeCompletado();
-          } else {
-            _mostrarDialogoViajeCancelado();
-          }
-
-          Future.delayed(const Duration(seconds: 3), () {
-            if (mounted && _navegacionFinalEjecutada) {
-              _procesarSalidaSegura(
-                exito: viaje.estado == EstadoViaje.completado,
-                mensaje: viaje.estado == EstadoViaje.completado
-                    ? 'Viaje completado'
-                    : 'Viaje cancelado',
-              );
-            }
-          });
-        }
-      }
-    }, onError: (error) {
-      debugPrint('[CLICKEXPRESS] Error en viajeStream: $error');
     });
 
     _servicioSeguimiento.ubicacionConductorStream.listen((ubicacion) {
@@ -388,7 +398,6 @@ class _PantallaSeguimientoViajeState extends State<PantallaSeguimientoViaje>
     }
 
     if (_ubicacionConductor != null) {
-      // FIX: Hacer la obtención de ruta asíncrona para no bloquear la UI
       Future.microtask(() => _obtenerRuta());
     }
 
@@ -398,7 +407,6 @@ class _PantallaSeguimientoViajeState extends State<PantallaSeguimientoViaje>
       double minLng = puntos.map((p) => p.longitude).reduce(min);
       double maxLng = puntos.map((p) => p.longitude).reduce(max);
 
-      // Agregar margen proporcional (30%) para vista más amplia
       final latPadding = (maxLat - minLat) * 0.3;
       final lngPadding = (maxLng - minLng) * 0.3;
 
@@ -410,7 +418,7 @@ class _PantallaSeguimientoViajeState extends State<PantallaSeguimientoViaje>
       _mapController?.animateCamera(
         CameraUpdate.newLatLngBounds(
           bounds,
-          100.0, // padding fijo adicional en píxeles
+          100.0,
         ),
       );
     } else if (puntos.length == 1) {
@@ -593,11 +601,7 @@ class _PantallaSeguimientoViajeState extends State<PantallaSeguimientoViaje>
         ],
       ),
       body: _viajeActual == null
-          ? () {
-              debugPrint(
-                  '[CLICKEXPRESS] Renderizando esqueleto (viajeActual es null)');
-              return _construirCargaEsqueleto();
-            }()
+          ? _construirCargaEsqueleto()
           : Stack(
               children: [
                 // Mapa de fondo completo
@@ -787,7 +791,7 @@ class _PantallaSeguimientoViajeState extends State<PantallaSeguimientoViaje>
     }
 
     final Set<Polyline> polylines = {};
-    if (_puntosRuta.isNotEmpty) {
+    if (_puntosRuta.length > 1) {
       polylines.add(
         Polyline(
           polylineId: const PolylineId('ruta'),
@@ -826,7 +830,7 @@ class _PantallaSeguimientoViajeState extends State<PantallaSeguimientoViaje>
             color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 24,
             spreadRadius: 2,
-            offset: const Offset(0, -4),
+            offset: const Offset(0, 8),
           ),
         ],
       ),
@@ -892,7 +896,8 @@ class _PantallaSeguimientoViajeState extends State<PantallaSeguimientoViaje>
           SizedBox(height: 24.h),
 
           // Información del conductor
-          if (_viajeActual!.nombreConductor != null) ...[
+          if (_viajeActual!.nombreConductor != null &&
+              _viajeActual!.nombreConductor!.isNotEmpty) ...[
             _construirInfoConductor(),
             SizedBox(height: 24.h),
             Divider(color: Colors.grey[200], thickness: 1),
@@ -980,19 +985,26 @@ class _PantallaSeguimientoViajeState extends State<PantallaSeguimientoViaje>
             ],
           ),
           child: CircleAvatar(
-            radius: 28.r,
+            radius: 30.r,
             backgroundColor: Colors.white,
             backgroundImage:
                 _fotoConductor != null ? NetworkImage(_fotoConductor!) : null,
             child: _fotoConductor == null
-                ? Text(
-                    _viajeActual!.nombreConductor![0].toUpperCase(),
-                    style: GoogleFonts.plusJakartaSans(
-                      color: Colors.black87,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 20.sp,
-                    ),
-                  )
+                ? (_viajeActual?.nombreConductor != null &&
+                        _viajeActual!.nombreConductor!.isNotEmpty
+                    ? Text(
+                        _inicialConductor,
+                        style: GoogleFonts.plusJakartaSans(
+                          color: Colors.black87,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 20.sp,
+                        ),
+                      )
+                    : Icon(
+                        Icons.person,
+                        color: Colors.grey[600],
+                        size: 28.sp,
+                      ))
                 : null,
           ),
         ),
@@ -1007,7 +1019,7 @@ class _PantallaSeguimientoViajeState extends State<PantallaSeguimientoViaje>
                 children: [
                   Expanded(
                     child: Text(
-                      _viajeActual!.nombreConductor!,
+                      _nombreConductorSeguro,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.plusJakartaSans(
@@ -1768,7 +1780,8 @@ class _PantallaSeguimientoViajeState extends State<PantallaSeguimientoViaje>
                       SizedBox(height: 8.h),
 
                       // Información del conductor
-                      if (_viajeActual?.nombreConductor != null) ...[
+                      if (_viajeActual?.nombreConductor != null &&
+                          _viajeActual!.nombreConductor!.isNotEmpty) ...[
                         Container(
                           padding: EdgeInsets.symmetric(
                             horizontal: 16.w,
@@ -1795,15 +1808,22 @@ class _PantallaSeguimientoViajeState extends State<PantallaSeguimientoViaje>
                                     ? NetworkImage(_fotoConductor!)
                                     : null,
                                 child: _fotoConductor == null
-                                    ? Text(
-                                        _viajeActual!.nombreConductor![0]
-                                            .toUpperCase(),
-                                        style: GoogleFonts.plusJakartaSans(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 16.sp,
-                                        ),
-                                      )
+                                    ? (_viajeActual?.nombreConductor != null &&
+                                            _viajeActual!
+                                                .nombreConductor!.isNotEmpty
+                                        ? Text(
+                                            _inicialConductor,
+                                            style: GoogleFonts.plusJakartaSans(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 16.sp,
+                                            ),
+                                          )
+                                        : Icon(
+                                            Icons.person,
+                                            color: Colors.white,
+                                            size: 20.sp,
+                                          ))
                                     : null,
                               ),
                               SizedBox(width: 12.w),
@@ -1811,7 +1831,7 @@ class _PantallaSeguimientoViajeState extends State<PantallaSeguimientoViaje>
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    _viajeActual!.nombreConductor!,
+                                    _nombreConductorSeguro,
                                     style: GoogleFonts.plusJakartaSans(
                                       fontWeight: FontWeight.bold,
                                       fontSize: 14.sp,
@@ -2099,7 +2119,9 @@ class _PantallaSeguimientoViajeState extends State<PantallaSeguimientoViaje>
   @override
   void dispose() {
     _viajeSubscription?.cancel();
+    _viajeStreamSubscription?.cancel();
     _bocinaSubscription?.cancel();
+    _chatNotificationSubscription?.cancel();
     _notificationTimer?.cancel();
     _servicioSeguimiento.detenerSeguimiento();
     _audioPlayer.dispose();

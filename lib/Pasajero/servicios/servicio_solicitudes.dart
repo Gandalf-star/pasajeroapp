@@ -451,7 +451,8 @@ class ServicioSolicitudes {
       } else {
         ClickLogger.d(
             'Encontrados ${conductoresDisponibles.length} conductores disponibles');
-        await _notificarConductores(conductoresDisponibles, idSolicitud);
+        final conductorIds = conductoresDisponibles.map((c) => c.id).toList();
+        await _notificarConductores(conductorIds, idSolicitud);
       }
     } catch (e) {
       ClickLogger.d('Error en búsqueda de conductors: $e');
@@ -484,9 +485,32 @@ class ServicioSolicitudes {
     }
   }
 
-  Future<void> _notificarConductores(List drivers, String idSolicitud) async {
-    ClickLogger.d(
-        'Notificando ${drivers.length} conductores sobre solicitud $idSolicitud');
+  Future<void> _notificarConductores(
+      List<String> conductorIds, String idSolicitud) async {
+    if (conductorIds.isEmpty) {
+      ClickLogger.d('No se encontraron conductores disponibles');
+      return;
+    }
+
+    for (var conductorId in conductorIds) {
+      try {
+        await _baseDeDatos
+            .child(
+                '${ConstantesInteroperabilidad.nodoConductores}/$conductorId/solicitudActiva')
+            .set({
+          'idSolicitud': idSolicitud,
+          'fechaActualizacion': ServerValue.timestamp,
+        });
+        await _baseDeDatos
+            .child(
+                '${ConstantesInteroperabilidad.nodoSolicitudesViaje}/$idSolicitud/conductoresNotificados/$conductorId')
+            .set(true);
+        ClickLogger.d(
+            'Conductor $conductorId notificado con solicitud $idSolicitud');
+      } catch (e) {
+        ClickLogger.d('Error al notificar conductor $conductorId: $e');
+      }
+    }
   }
 
   Future<bool> cancelarSolicitudViaje(

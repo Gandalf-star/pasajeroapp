@@ -17,14 +17,13 @@ class ServicioSeguimientoViaje {
   StreamSubscription<DatabaseEvent>? _viajeSubscription;
   StreamSubscription<DatabaseEvent>? _conductorSubscription;
   StreamSubscription<DatabaseEvent>? _viajeActivoSubscription;
+  StreamSubscription<DatabaseEvent>? _conductorDataSubscription;
 
-  // Stream controllers para notificar cambios
   final StreamController<ViajeModelo?> _viajeController =
       StreamController<ViajeModelo?>.broadcast();
   final StreamController<UbicacionModelo?> _ubicacionConductorController =
       StreamController<UbicacionModelo?>.broadcast();
 
-  // Getters para los streams
   Stream<ViajeModelo?> get viajeStream => _viajeController.stream;
   Stream<UbicacionModelo?> get ubicacionConductorStream =>
       _ubicacionConductorController.stream;
@@ -32,73 +31,86 @@ class ServicioSeguimientoViaje {
   ViajeModelo? _viajeActual;
   ViajeModelo? get viajeActual => _viajeActual;
 
+  final Map<String, Map<String, dynamic>> _cacheConductores = {};
+
+  void _cancelarTodasLasSubscriptions() {
+    _viajeSubscription?.cancel();
+    _viajeSubscription = null;
+    _conductorSubscription?.cancel();
+    _conductorSubscription = null;
+    _viajeActivoSubscription?.cancel();
+    _viajeActivoSubscription = null;
+    _conductorDataSubscription?.cancel();
+    _conductorDataSubscription = null;
+    _cacheConductores.clear();
+  }
+
+  /// Inicia el seguimiento de un viaje específico
   /// Inicia el seguimiento de un viaje específico
   Future<void> iniciarSeguimientoViaje(String idViaje) async {
     debugPrint('Iniciando seguimiento del viaje: $idViaje');
     try {
-      // Detener seguimiento anterior si existe
       detenerSeguimiento();
 
-      // Escuchar cambios en el viaje
       _viajeSubscription = _dbRef
           .child(ConstantesInteroperabilidad.nodoSolicitudesViaje)
           .child(idViaje)
           .onValue
           .listen((event) {
-        debugPrint('Evento recibido para solicitud $idViaje');
+        // 1. Si la solicitud ya no existe en este nodo, buscamos en viajes_activos
+        if (!event.snapshot.exists) {
+          debugPrint(
+              'Solicitud no encontrada en nodo pendiente, buscando en activos...');
+          _escucharViajeActivo(idViaje);
+          // IMPORTANTE: Cancelamos esta suscripción para no quedar escuchando un nodo vacío
+          _viajeSubscription?.cancel();
+          return;
+        }
+
         try {
-          if (event.snapshot.exists) {
-            debugPrint('Snapshot existe');
-            if (event.snapshot.value is Map) {
-              final data =
-                  Map<String, dynamic>.from(event.snapshot.value as Map);
-              debugPrint('Datos recibidos: ${data.keys.join(', ')}');
-              debugPrint('   Estado: ${data['estado']}');
-              debugPrint('   idConductor: ${data['idConductor']}');
-              debugPrint('   idViajeActivo: ${data['idViajeActivo']}');
+          if (event.snapshot.value is Map) {
+            final data = Map<String, dynamic>.from(event.snapshot.value as Map);
 
-              _viajeActual = ViajeModelo.fromMap(data, idViaje);
-              debugPrint('ViajeModelo creado exitosamente');
-              _viajeController.add(_viajeActual);
-
-              // Si la solicitud ya tiene idViajeActivo, escuchar el viaje activo
-              final idViajeActivo =
-                  (data[ConstantesInteroperabilidad.campoIdViajeActivo] ??
-                          data['idViajeActivo'] ??
-                          '')
-                      .toString();
-              if (idViajeActivo.isNotEmpty) {
-                debugPrint('Escuchando viaje activo: $idViajeActivo');
-                _escucharViajeActivo(idViajeActivo);
+            String? idConductor = data['idConductor']?.toString();
+            Map<String, dynamic>? datosConductor;
+            if (idConductor != null && idConductor.isNotEmpty) {
+              datosConductor = _cacheConductores[idConductor];
+              if (datosConductor == null) {
+                _obtenerYEnriquecerDatosConductor(idConductor);
+                _escucharDatosConductor(idConductor);
               }
-
-              // También escuchar ubicación del conductor si está asignado
-              if (_viajeActual?.idConductor != null) {
-                debugPrint(
-                    'Escuchando ubicación del conductor: ${_viajeActual!.idConductor}');
-                _escucharUbicacionConductor(_viajeActual!.idConductor!);
-              }
-            } else {
-              debugPrint(
-                  'ERROR: Snapshot value no es Map: ${event.snapshot.value.runtimeType}');
             }
-          } else {
-            debugPrint('Snapshot no existe para $idViaje');
-            _viajeActual = null;
-            _viajeController.add(null);
+
+            _viajeActual = ViajeModelo.fromMap(data, idViaje,
+                datosConductor: datosConductor);
+            _viajeController.add(_viajeActual);
+
+            // 2. Si ya tiene un ID de viaje activo diferente o se confirma el paso a activo
+            final idViajeActivo =
+                (data[ConstantesInteroperabilidad.campoIdViajeActivo] ??
+                        data['idViajeActivo'] ??
+                        '')
+                    .toString();
+
+            if (idViajeActivo.isNotEmpty) {
+              _escucharViajeActivo(idViajeActivo);
+              _viajeSubscription
+                  ?.cancel(); // Dejamos de escuchar la solicitud, ahora mandan los "activos"
+            }
+
+            // 3. Escuchar ubicación solo si hay conductor
+            if (_viajeActual?.idConductor != null) {
+              _escucharUbicacionConductor(_viajeActual!.idConductor!);
+            }
           }
-        } catch (e, stackTrace) {
-          debugPrint('ERROR al procesar evento de viaje: $e');
-          debugPrint('Stack trace: $stackTrace');
-          _viajeController.addError(e);
+        } catch (e) {
+          debugPrint('Error procesando data: $e');
         }
       }, onError: (error) {
-        debugPrint('ERROR en listener de viaje: $error');
+        debugPrint('ERROR Firebase: $error');
         _viajeController.addError(error);
       });
-    } catch (e, stackTrace) {
-      debugPrint('ERROR al iniciar seguimiento del viaje: $e');
-      debugPrint('Stack trace: $stackTrace');
+    } catch (e) {
       _viajeController.addError(e);
     }
   }
@@ -106,6 +118,7 @@ class ServicioSeguimientoViaje {
   /// Escucha el viaje activo (viajes_activos/{id}) cuando existe
   void _escucharViajeActivo(String idViajeActivo,
       {int reintentos = 0, int maxReintentos = 5}) {
+    // 1. Cancelamos cualquier suscripción previa para este nodo
     _viajeActivoSubscription?.cancel();
 
     _viajeActivoSubscription = _dbRef
@@ -113,36 +126,74 @@ class ServicioSeguimientoViaje {
         .child(idViajeActivo)
         .onValue
         .listen((event) {
-      // RESET de reintentos si recibimos datos exitosos
-      // reintentos = 0; // Not strictly needed in recursive approach but safe
+      // Reiniciamos contador de reintentos tras un evento exitoso
+      reintentos = 0;
 
-      if (event.snapshot.exists && event.snapshot.value is Map) {
+      if (event.snapshot.exists && event.snapshot.value != null) {
         final data = Map<String, dynamic>.from(event.snapshot.value as Map);
-        _viajeActual = ViajeModelo.fromMap(data, idViajeActivo);
+
+        final String? idConductorAnterior = _viajeActual?.idConductor;
+        final String? idConductorNuevo = data['idConductor']?.toString();
+
+        Map<String, dynamic>? datosConductor;
+        if (idConductorNuevo != null && idConductorNuevo.isNotEmpty) {
+          datosConductor = _cacheConductores[idConductorNuevo];
+          if (datosConductor == null) {
+            _obtenerYEnriquecerDatosConductor(idConductorNuevo);
+            _escucharDatosConductor(idConductorNuevo);
+          }
+        }
+
+        _viajeActual = ViajeModelo.fromMap(data, idViajeActivo,
+            datosConductor: datosConductor);
         _viajeController.add(_viajeActual);
 
-        if (_viajeActual?.idConductor != null) {
+        // 2. Gestión de estados finales — incluir TODAS las variantes de cancelación
+        final estadoStr =
+            data[ConstantesInteroperabilidad.campoEstado]?.toString() ?? '';
+        final esEstadoFinal = _viajeActual?.estado == EstadoViaje.cancelado ||
+            _viajeActual?.estado == EstadoViaje.completado ||
+            _viajeActual?.estado == EstadoViaje.canceladoPorConductor ||
+            _viajeActual?.estado == EstadoViaje.canceladoPorPasajero ||
+            estadoStr == 'cancelado_por_conductor' ||
+            estadoStr == 'cancelado_por_pasajero' ||
+            estadoStr == 'cancelado' ||
+            estadoStr == 'completado';
+
+        if (esEstadoFinal) {
+          debugPrint(
+              '[FlashDrive] Viaje finalizado ($estadoStr). Deteniendo flujos.');
+          detenerSeguimiento();
+          return; // Salimos para no re-activar la ubicación
+        }
+
+        // 3. OPTIMIZACIÓN: Solo escuchar ubicación si el conductor es nuevo o cambió
+        if (_viajeActual?.idConductor != null &&
+            _viajeActual?.idConductor != idConductorAnterior) {
+          debugPrint(
+              '[FlashDrive] Nuevo conductor asignado: ${_viajeActual!.idConductor}');
           _escucharUbicacionConductor(_viajeActual!.idConductor!);
         }
       } else {
+        // Si el snapshot no existe, emitimos el último estado conocido
         _viajeController.add(_viajeActual);
       }
     }, onError: (error) async {
+      _cancelarTodasLasSubscriptions();
+
       if (reintentos < maxReintentos) {
         final nuevosReintentos = reintentos + 1;
-
         int segundosEspera = (math.pow(2, nuevosReintentos)).toInt();
 
         ClickLogger.d(
-            'Error en Stream Viaje Activo. Reintentando en $segundosEspera s (Intento $nuevosReintentos)');
+            'Error en Stream Viaje Activo. Reintentando en $segundosEspera s');
 
         await Future.delayed(Duration(seconds: segundosEspera));
 
-        // Re-llamada pasando el contador incrementado
         _escucharViajeActivo(idViajeActivo, reintentos: nuevosReintentos);
       } else {
-        ClickLogger.d(
-            'Se alcanzó el máximo de reintentos para el Stream del viaje.');
+        ClickLogger.d('Máximo de reintentos alcanzado.');
+        _viajeController.addError('Error de conexión persistente en el viaje.');
       }
     });
   }
@@ -174,10 +225,102 @@ class ServicioSeguimientoViaje {
     });
   }
 
+  Future<void> _obtenerYEnriquecerDatosConductor(String idConductor) async {
+    if (_cacheConductores.containsKey(idConductor)) return;
+
+    try {
+      final snapshot = await _dbRef
+          .child(ConstantesInteroperabilidad.nodoConductores)
+          .child(idConductor)
+          .get();
+
+      if (snapshot.exists && snapshot.value is Map) {
+        final conductorData = Map<String, dynamic>.from(snapshot.value as Map);
+        _cacheConductores[idConductor] = conductorData;
+
+        debugPrint(
+            '[SEGUIMIENTO] Datos del conductor obtenidos: ${conductorData['nombre']}');
+
+        if (_viajeActual != null && _viajeActual!.idConductor == idConductor) {
+          if (_viajeActual!.nombreConductor == null ||
+              _viajeActual!.nombreConductor!.isEmpty ||
+              _viajeActual!.telefonoConductor == null ||
+              _viajeActual!.placaVehiculo == null) {
+            final viajeEnriquecido = ViajeModelo.fromMap(
+              {
+                ..._viajeActual!.toMap(),
+                'nombreConductor':
+                    conductorData[ConstantesInteroperabilidad.campoNombre],
+                'telefonoConductor':
+                    conductorData[ConstantesInteroperabilidad.campoTelefono],
+                'placaVehiculo':
+                    conductorData[ConstantesInteroperabilidad.campoPlaca],
+              },
+              _viajeActual!.id,
+              datosConductor: conductorData,
+            );
+
+            _viajeActual = viajeEnriquecido;
+            _viajeController.add(_viajeActual);
+            debugPrint(
+                '[SEGUIMIENTO] Viaje enriquecido con datos del conductor');
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[SEGUIMIENTO] Error obteniendo datos del conductor: $e');
+    }
+  }
+
+  void _escucharDatosConductor(String idConductor) {
+    if (_cacheConductores.containsKey(idConductor)) {
+      if (_viajeActual != null &&
+          (_viajeActual!.nombreConductor == null ||
+              _viajeActual!.nombreConductor!.isEmpty)) {
+        final conductorData = _cacheConductores[idConductor]!;
+        final viajeEnriquecido = ViajeModelo.fromMap(
+          {..._viajeActual!.toMap()},
+          _viajeActual!.id,
+          datosConductor: conductorData,
+        );
+        _viajeActual = viajeEnriquecido;
+        _viajeController.add(_viajeActual);
+      }
+      return;
+    }
+
+    _conductorDataSubscription?.cancel();
+
+    _conductorDataSubscription = _dbRef
+        .child(ConstantesInteroperabilidad.nodoConductores)
+        .child(idConductor)
+        .onValue
+        .listen((event) async {
+      if (event.snapshot.exists && event.snapshot.value is Map) {
+        final conductorData =
+            Map<String, dynamic>.from(event.snapshot.value as Map);
+        _cacheConductores[idConductor] = conductorData;
+
+        if (_viajeActual != null && _viajeActual!.idConductor == idConductor) {
+          if (_viajeActual!.nombreConductor == null ||
+              _viajeActual!.nombreConductor!.isEmpty) {
+            final viajeEnriquecido = ViajeModelo.fromMap(
+              {..._viajeActual!.toMap()},
+              _viajeActual!.id,
+              datosConductor: conductorData,
+            );
+            _viajeActual = viajeEnriquecido;
+            _viajeController.add(_viajeActual);
+            debugPrint('[SEGUIMIENTO] Viaje enriquecido en tiempo real');
+          }
+        }
+      }
+    });
+  }
+
   /// Busca el viaje activo del pasajero
   Future<ViajeModelo?> buscarViajeActivoPasajero(String idPasajero) async {
     try {
-      // Buscar en solicitudes_viaje
       final snapshot = await _dbRef
           .child(ConstantesInteroperabilidad.nodoSolicitudesViaje)
           .orderByChild(ConstantesInteroperabilidad.campoIdPasajero)
@@ -187,7 +330,6 @@ class ServicioSeguimientoViaje {
       if (snapshot.snapshot.exists) {
         final data = snapshot.snapshot.value as Map<String, dynamic>;
 
-        // Buscar viajes que no estén completados o cancelados
         for (final entry in data.entries) {
           final viajeData = entry.value as Map<String, dynamic>;
           final estado = EstadoViajeExtension.fromString(
@@ -198,7 +340,28 @@ class ServicioSeguimientoViaje {
               estado != EstadoViaje.cancelado &&
               estado != EstadoViaje.canceladoPorConductor &&
               estado != EstadoViaje.canceladoPorPasajero) {
-            return ViajeModelo.fromMap(viajeData, entry.key);
+            String? idConductor = viajeData['idConductor']?.toString();
+            Map<String, dynamic>? datosConductor;
+
+            if (idConductor != null && idConductor.isNotEmpty) {
+              datosConductor = _cacheConductores[idConductor];
+              if (datosConductor == null) {
+                try {
+                  final snapConductor = await _dbRef
+                      .child(ConstantesInteroperabilidad.nodoConductores)
+                      .child(idConductor)
+                      .get();
+                  if (snapConductor.exists && snapConductor.value is Map) {
+                    datosConductor =
+                        Map<String, dynamic>.from(snapConductor.value as Map);
+                    _cacheConductores[idConductor] = datosConductor;
+                  }
+                } catch (_) {}
+              }
+            }
+
+            return ViajeModelo.fromMap(viajeData, entry.key,
+                datosConductor: datosConductor);
           }
         }
       }
@@ -212,45 +375,75 @@ class ServicioSeguimientoViaje {
   /// Cancela un viaje por parte del pasajero
   Future<bool> cancelarViaje(String idViaje, String razon) async {
     try {
-      // 1. CRÍTICO: Actualizar estado del viaje
-      await _dbRef
-          .child(ConstantesInteroperabilidad.nodoSolicitudesViaje)
-          .child(idViaje)
-          .update({
-        ConstantesInteroperabilidad.campoEstado: 'cancelado_por_pasajero',
-        'razonCancelacion': razon,
-        'timestampCancelacion': DateTime.now().millisecondsSinceEpoch,
-      });
+      final ahora = DateTime.now().millisecondsSinceEpoch;
 
-      // Actualizar estado en viajes_activos para evitar viajes colgados
+      // Obtener datos del viaje para poder limpiar al conductor
+      String? idConductor;
+      String? idPasajero;
       try {
-        await _dbRef
+        final snap = await _dbRef
             .child(ConstantesInteroperabilidad.nodoViajesActivos)
             .child(idViaje)
-            .update({
-          ConstantesInteroperabilidad.campoEstado: 'cancelado_por_pasajero',
-          'timestampCancelacion': DateTime.now().millisecondsSinceEpoch,
-        });
-      } catch (e) {
-        debugPrint('Error no crítico cancelando en viajes_activos: $e');
-      }
-
-      // Intentar limpiar solicitudActiva
-      // Si falla por permisos, no afecta el resultado
-      if (_viajeActual != null) {
-        try {
-          await _dbRef
-              .child(ConstantesInteroperabilidad.nodoPasajeros)
-              .child(_viajeActual!.idPasajero)
-              .update({
-            'solicitudActiva': null,
-          });
-        } catch (e) {
-          debugPrint('Error no crítico limpiando solicitudActiva: $e');
-          // Ignorar error de limpieza
+            .get();
+        if (snap.exists && snap.value is Map) {
+          final d = Map<String, dynamic>.from(snap.value as Map);
+          idConductor = d['idConductor']?.toString();
+          idPasajero = d['idPasajero']?.toString();
         }
+        // Fallback desde solicitudes_viaje
+        if (idConductor == null || idPasajero == null) {
+          final snapSol = await _dbRef
+              .child(ConstantesInteroperabilidad.nodoSolicitudesViaje)
+              .child(idViaje)
+              .get();
+          if (snapSol.exists && snapSol.value is Map) {
+            final d = Map<String, dynamic>.from(snapSol.value as Map);
+            idConductor ??= d['idConductor']?.toString();
+            idPasajero ??= d['idPasajero']?.toString();
+          }
+        }
+      } catch (e) {
+        debugPrint('Error obteniendo datos para cancelación: $e');
       }
 
+      // Actualización atómica de todos los nodos
+      final Map<String, dynamic> atomicUpdates = {
+        // Cancelar la solicitud
+        '${ConstantesInteroperabilidad.nodoSolicitudesViaje}/$idViaje/${ConstantesInteroperabilidad.campoEstado}':
+            'cancelado_por_pasajero',
+        '${ConstantesInteroperabilidad.nodoSolicitudesViaje}/$idViaje/razonCancelacion':
+            razon,
+        '${ConstantesInteroperabilidad.nodoSolicitudesViaje}/$idViaje/timestampCancelacion':
+            ahora,
+        // Cancelar el viaje activo
+        '${ConstantesInteroperabilidad.nodoViajesActivos}/$idViaje/${ConstantesInteroperabilidad.campoEstado}':
+            'cancelado_por_pasajero',
+        '${ConstantesInteroperabilidad.nodoViajesActivos}/$idViaje/timestampCancelacion':
+            ahora,
+      };
+
+      // Limpiar solicitudActiva del pasajero
+      idPasajero ??= _viajeActual?.idPasajero;
+      if (idPasajero != null && idPasajero.isNotEmpty) {
+        atomicUpdates[
+                '${ConstantesInteroperabilidad.nodoPasajeros}/$idPasajero/solicitudActiva'] =
+            null;
+      }
+
+      // CRÍTICO: Liberar al conductor para que pueda aceptar nuevos viajes
+      if (idConductor != null && idConductor.isNotEmpty) {
+        atomicUpdates[
+                '${ConstantesInteroperabilidad.nodoConductores}/$idConductor/idViajeActivo'] =
+            null;
+        atomicUpdates[
+                '${ConstantesInteroperabilidad.nodoConductores}/$idConductor/disponible'] =
+            true;
+        atomicUpdates['usuarios/$idConductor/idViajeActivo'] = null;
+        atomicUpdates['usuarios/$idConductor/disponible'] = true;
+      }
+
+      await _dbRef.update(atomicUpdates);
+      debugPrint('[CANCELAR_PASAJERO] Viaje $idViaje cancelado atómicamente.');
       return true;
     } catch (e) {
       debugPrint('Error al cancelar viaje: $e');
@@ -285,30 +478,6 @@ class ServicioSeguimientoViaje {
         'comentarioPasajero': comentario,
         'timestampCalificacion': DateTime.now().millisecondsSinceEpoch,
       });
-
-      // Actualizar promedio de calificación del conductor
-      final conductorRef = _dbRef
-          .child(ConstantesInteroperabilidad.nodoConductores)
-          .child(idConductor);
-      final snapshot = await conductorRef.once();
-
-      if (snapshot.snapshot.exists) {
-        final data = snapshot.snapshot.value as Map<String, dynamic>;
-        final calificacionActual =
-            (data[ConstantesInteroperabilidad.campoCalificacion] ?? 5.0)
-                .toDouble();
-        final totalViajes = (data['totalViajes'] ?? 0) + 1;
-
-        final nuevaCalificacion =
-            ((calificacionActual * (totalViajes - 1)) + calificacion) /
-                totalViajes;
-
-        await conductorRef.update({
-          'calificacionPromedio': nuevaCalificacion,
-          'totalViajes': totalViajes,
-        });
-      }
-
       return true;
     } catch (e) {
       debugPrint('Error al calificar conductor: $e');
@@ -332,11 +501,32 @@ class ServicioSeguimientoViaje {
 
         for (final entry in data.entries) {
           final viajeData = entry.value as Map<String, dynamic>;
-          final viaje = ViajeModelo.fromMap(viajeData, entry.key);
+
+          String? idConductor = viajeData['idConductor']?.toString();
+          Map<String, dynamic>? datosConductor;
+
+          if (idConductor != null && idConductor.isNotEmpty) {
+            datosConductor = _cacheConductores[idConductor];
+            if (datosConductor == null) {
+              try {
+                final snapConductor = await _dbRef
+                    .child(ConstantesInteroperabilidad.nodoConductores)
+                    .child(idConductor)
+                    .get();
+                if (snapConductor.exists && snapConductor.value is Map) {
+                  datosConductor =
+                      Map<String, dynamic>.from(snapConductor.value as Map);
+                  _cacheConductores[idConductor] = datosConductor;
+                }
+              } catch (_) {}
+            }
+          }
+
+          final viaje = ViajeModelo.fromMap(viajeData, entry.key,
+              datosConductor: datosConductor);
           viajes.add(viaje);
         }
 
-        // Ordenar por timestamp descendente (más recientes primero)
         viajes.sort((a, b) => b.timestamp.compareTo(a.timestamp));
       }
 
@@ -430,12 +620,7 @@ class ServicioSeguimientoViaje {
 
   /// Detiene todo el seguimiento activo
   void detenerSeguimiento() {
-    _viajeSubscription?.cancel();
-    _conductorSubscription?.cancel();
-    _viajeActivoSubscription?.cancel();
-    _viajeSubscription = null;
-    _conductorSubscription = null;
-    _viajeActivoSubscription = null;
+    _cancelarTodasLasSubscriptions();
   }
 
   /// Limpia recursos al cerrar la aplicación

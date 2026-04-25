@@ -42,7 +42,11 @@ class ViajeModelo {
     this.categoria,
   });
 
-  factory ViajeModelo.fromMap(Map<String, dynamic> map, String id) {
+  factory ViajeModelo.fromMap(
+    Map<String, dynamic> map,
+    String id, {
+    Map<String, dynamic>? datosConductor,
+  }) {
     String destinoNombre = '';
     final destinoData = map['destino'];
     if (destinoData is Map) {
@@ -79,6 +83,26 @@ class ViajeModelo {
           UbicacionModelo(lat: dLat, lng: dLng, nombre: destinoNombre);
     }
 
+    String? conductorNombre;
+    String? conductorTelefono;
+    String? conductorPlaca;
+
+    if (datosConductor != null) {
+      conductorNombre = SafeUtils.safeString(
+          datosConductor[ConstantesInteroperabilidad.campoNombre]);
+      conductorTelefono = SafeUtils.safeString(
+          datosConductor[ConstantesInteroperabilidad.campoTelefono]);
+      conductorPlaca = SafeUtils.safeString(
+          datosConductor[ConstantesInteroperabilidad.campoPlaca]);
+    }
+
+    conductorNombre ??= SafeUtils.safeString(map['nombreConductor'] ??
+        map[ConstantesInteroperabilidad.campoNombreConductor]);
+    conductorTelefono ??= SafeUtils.safeString(map['telefonoConductor'] ??
+        map[ConstantesInteroperabilidad.campoTelefonoConductor]);
+    conductorPlaca ??= SafeUtils.safeString(
+        map['placaVehiculo'] ?? map[ConstantesInteroperabilidad.campoPlaca]);
+
     return ViajeModelo(
       id: id,
       idPasajero: SafeUtils.safeString(map['idPasajero'] ??
@@ -98,12 +122,9 @@ class ViajeModelo {
           'pendiente')),
       timestamp: SafeUtils.safeInt(
           map['timestamp'] ?? map[ConstantesInteroperabilidad.campoTimestamp]),
-      nombreConductor: SafeUtils.safeString(map['nombreConductor'] ??
-          map[ConstantesInteroperabilidad.campoNombreConductor]),
-      telefonoConductor: SafeUtils.safeString(map['telefonoConductor'] ??
-          map[ConstantesInteroperabilidad.campoTelefonoConductor]),
-      placaVehiculo: SafeUtils.safeString(
-          map['placaVehiculo'] ?? map[ConstantesInteroperabilidad.campoPlaca]),
+      nombreConductor: conductorNombre,
+      telefonoConductor: conductorTelefono,
+      placaVehiculo: conductorPlaca,
       ubicacionConductor: map['ubicacionConductor'] != null
           ? UbicacionModelo.fromMap(
               SafeUtils.safeMap(map['ubicacionConductor']))

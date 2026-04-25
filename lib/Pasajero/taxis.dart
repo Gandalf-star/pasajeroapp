@@ -244,12 +244,14 @@ class _PantallaPasajeroState extends State<PantallaPasajero> {
       // Buscar la solicitud activa más reciente
       for (final solicitud in solicitudes) {
 // Verificar que sea tipo carro - aceptar null o vacío
-        final tipoSolicitudLower = solicitud.tipoVehiculoRequerido.toLowerCase();
-        // Solo ignoramos si es explícitamente MOTO. 
+        final tipoSolicitudLower =
+            solicitud.tipoVehiculoRequerido.toLowerCase();
+        // Solo ignoramos si es explícitamente MOTO.
         // Aceptamos 'carro', categorías (confort, etc) y el alias 'Buscando_conductor'
-        if (tipoSolicitudLower == ConstantesInteroperabilidad.tipoMoto || 
+        if (tipoSolicitudLower == ConstantesInteroperabilidad.tipoMoto ||
             tipoSolicitudLower == 'moto') {
-          debugPrint('Ignorando solicitud ${solicitud.id} - tipo: $tipoSolicitudLower');
+          debugPrint(
+              'Ignorando solicitud ${solicitud.id} - tipo: $tipoSolicitudLower');
           continue;
         }
 
